@@ -1,0 +1,30 @@
+name: Deploy to New Salesforce Org
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout your repository
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Install Salesforce CLI
+      - name: Install Salesforce CLI
+        run: |
+          npm install -g sfdx-cli
+      # Step 3: Set up the SFDX Auth URL
+      - name: Set up SFDX Authentication
+        run: |
+          echo "${{ secrets.SFDC_AUTH_URL }}" > sfdx-auth-url.txt
+          sfdx force:auth:sfdxurl:store -f sfdx-auth-url.txt -a MyNewOrg
+      # (Optional) Step 4: Display org info
+      - name: Display Org Info
+        run: sfdx force:org:display -u MyNewOrg --verbose
+
+      # Step 5: Deploy without running tests
+      - name: Deploy Metadata (No Tests)
+        run: |
+          sfdx force:source:deploy -u MyNewOrg -p force-app --wait 10 --testlevel NoTestRun
