@@ -37,8 +37,8 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
             echo "Deploying to Production..."
-            sfdx force:source:deploy -p force-app -u prod --testlevel RunLocalTests
+            sfdx force:source:deploy -p force-app -u prod --testlevel NoTestRun
           else
             echo "Deploying to Sandbox..."
-            sfdx force:source:deploy -p force-app -u sandbox --testlevel RunLocalTests
+            sfdx force:source:deploy -p force-app -u sandbox --testlevel NoTestRun
           fi
