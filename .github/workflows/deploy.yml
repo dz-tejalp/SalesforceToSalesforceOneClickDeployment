@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Choose Salesforce Environment"
+        description: "Choose the Salesforce environment"
         required: true
         default: "Sandbox"
         type: choice
@@ -33,12 +33,12 @@ jobs:
             sfdx auth:device:login -d -r https://test.salesforce.com
           fi
 
-      - name: Deploy to Salesforce
+      - name: Deploy Metadata
         run: |
           if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
             echo "Deploying to Production..."
-            sfdx force:source:deploy -p force-app -u <alias> --testlevel RunLocalTests
+            sfdx force:source:deploy -p force-app -u <alias> --checkonly --testlevel RunLocalTests
           else
             echo "Deploying to Sandbox..."
-            sfdx force:source:deploy -p force-app -u <alias> --testlevel RunLocalTests
+            sfdx force:source:deploy -p force-app -u <alias> --checkonly --testlevel RunLocalTests
           fi
