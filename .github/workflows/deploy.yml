@@ -7,64 +7,48 @@ on:
   workflow_dispatch:
     inputs:
       targetEnvironment:
-        description: 'Select Deployment Environment (sandbox or production)'
-        required: false
+        description: 'Deployment target: sandbox or production'
+        required: true
         default: 'sandbox'
+        type: choice
+        options:
+          - sandbox
+          - production
 
 jobs:
   deploy:
-    name: Salesforce Device Login and Deployment
+    name: Deploy to Salesforce via SFDX
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set TARGET_ENV and LOGIN_URL
-        # set environment variables for later steps; subsequent steps will see these via $GITHUB_ENV
+      - name: Set up environment variables
         run: |
-          # default to 'sandbox' if workflow_dispatch input not provided (push runs)
-          echo "TARGET_ENV=${{ github.event.inputs.targetEnvironment || 'sandbox' }}" >> $GITHUB_ENV
-          # choose login URL based on the chosen environment
-          echo "LOGIN_URL=${{ (github.event.inputs.targetEnvironment || 'sandbox') == 'production' && 'https://login.salesforce.com' || 'https://test.salesforce.com' }}" >> $GITHUB_ENV
+          echo "TARGET_ENV=${{ github.event.inputs.targetEnvironment }}" >> $GITHUB_ENV
+          echo "LOGIN_URL=${{ github.event.inputs.targetEnvironment == 'production' && 'https://login.salesforce.com' || 'https://test.salesforce.com' }}" >> $GITHUB_ENV
           echo "Configured TARGET_ENV=$TARGET_ENV"
           echo "Configured LOGIN_URL=$LOGIN_URL"
 
-      - name: Setup Node.js (16.x)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '16.x'
 
-      - name: Install Salesforce CLI (sfdx)
+      - name: Install Salesforce CLI
         run: |
-          echo "Installing Salesforce CLI globally via npm..."
           npm install -g sfdx-cli
           sfdx --version
 
       - name: Authenticate to Salesforce (device login)
-        env:
-          LOGIN_URL: ${{ env.LOGIN_URL }}
         run: |
           echo "Starting device login against $LOGIN_URL"
-          # device login prints a code and URL to the log — follow instructions to authenticate interactively
-          sfdx force:auth:device:login -r "$LOGIN_URL" --setdefaultusername
+          sfdx force:auth:device:login -r "$LOGIN_URL" --set-default
 
-      # Production deployment step: Run tests during deployment
-      - name: Deploy Source to Salesforce (RunLocalTests) - production
+      - name: Deploy to Production (RunLocalTests)
         if: ${{ env.TARGET_ENV == 'production' }}
-        env:
-          LOGIN_URL: ${{ env.LOGIN_URL }}
-        run: |
-          echo "Starting production deployment with tests..."
-          # same testlevel as original file: RunLocalTests
-          sfdx force:source:deploy -p force-app --testlevel RunLocalTests
+        run: sfdx force:source:deploy -p force-app --testlevel RunLocalTests
 
-      # Sandbox deployment step: (keeps same RunLocalTests behavior as in original)
-      - name: Deploy Source to Salesforce (RunLocalTests) - non-production
-        if: ${{ env.TARGET_ENV != 'production' }}
-        env:
-          LOGIN_URL: ${{ env.LOGIN_URL }}
-        run: |
-          echo "Starting sandbox deployment without running tests (replicating original file comments)..."
-          # note: original azure file used RunLocalTests for both branches; we replicate that exactly
-          sfdx force:source:deploy -p force-app --testlevel RunLocalTests
+      - name: Deploy to Sandbox (RunLocalTests)
+        if: ${{ env.TARGET_ENV == 'sandbox' }}
+        run: sfdx force:source:deploy -p force-app --testlevel RunLocalTests
