@@ -1,54 +1,44 @@
-name: Deploy to Salesforce
+name: Deploy to Salesforce via SFDX
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
-      targetEnvironment:
-        description: 'Deployment target: sandbox or production'
+      environment:
+        description: "Choose Salesforce Environment"
         required: true
-        default: 'sandbox'
+        default: "Sandbox"
         type: choice
         options:
-          - sandbox
-          - production
+          - Sandbox
+          - Production
 
 jobs:
   deploy:
-    name: Deploy to Salesforce via SFDX
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up environment variables
-        run: |
-          echo "TARGET_ENV=${{ github.event.inputs.targetEnvironment }}" >> $GITHUB_ENV
-          echo "LOGIN_URL=${{ github.event.inputs.targetEnvironment == 'production' && 'https://login.salesforce.com' || 'https://test.salesforce.com' }}" >> $GITHUB_ENV
-          echo "Configured TARGET_ENV=$TARGET_ENV"
-          echo "Configured LOGIN_URL=$LOGIN_URL"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '16.x'
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install Salesforce CLI
-        run: |
-          npm install -g sfdx-cli
-          sfdx --version
+        run: npm install sfdx-cli --global
 
       - name: Authenticate to Salesforce (device login)
         run: |
-          echo "Starting device login against $LOGIN_URL"
-          sfdx force:auth:device:login -r "$LOGIN_URL" --set-default
+          if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
+            echo "Authenticating to Production..."
+            sfdx auth:device:login -d -r https://login.salesforce.com
+          else
+            echo "Authenticating to Sandbox..."
+            sfdx auth:device:login -d -r https://test.salesforce.com
+          fi
 
-      - name: Deploy to Production (RunLocalTests)
-        if: ${{ env.TARGET_ENV == 'production' }}
-        run: sfdx force:source:deploy -p force-app --testlevel RunLocalTests
-
-      - name: Deploy to Sandbox (RunLocalTests)
-        if: ${{ env.TARGET_ENV == 'sandbox' }}
-        run: sfdx force:source:deploy -p force-app --testlevel RunLocalTests
+      - name: Deploy to Salesforce
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
+            echo "Deploying to Production..."
+            sfdx force:source:deploy -p force-app -u <alias> --testlevel RunLocalTests
+          else
+            echo "Deploying to Sandbox..."
+            sfdx force:source:deploy -p force-app -u <alias> --testlevel RunLocalTests
+          fi
