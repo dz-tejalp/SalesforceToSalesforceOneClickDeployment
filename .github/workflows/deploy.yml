@@ -1,30 +1,70 @@
-name: Deploy to New Salesforce Org
+name: Deploy to Salesforce
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      targetEnvironment:
+        description: 'Select Deployment Environment (sandbox or production)'
+        required: false
+        default: 'sandbox'
 
 jobs:
   deploy:
+    name: Salesforce Device Login and Deployment
     runs-on: ubuntu-latest
+
     steps:
-      # Step 1: Checkout your repository
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # Step 2: Install Salesforce CLI
-      - name: Install Salesforce CLI
+      - name: Set TARGET_ENV and LOGIN_URL
+        # set environment variables for later steps; subsequent steps will see these via $GITHUB_ENV
         run: |
+          # default to 'sandbox' if workflow_dispatch input not provided (push runs)
+          echo "TARGET_ENV=${{ github.event.inputs.targetEnvironment || 'sandbox' }}" >> $GITHUB_ENV
+          # choose login URL based on the chosen environment
+          echo "LOGIN_URL=${{ (github.event.inputs.targetEnvironment || 'sandbox') == 'production' && 'https://login.salesforce.com' || 'https://test.salesforce.com' }}" >> $GITHUB_ENV
+          echo "Configured TARGET_ENV=$TARGET_ENV"
+          echo "Configured LOGIN_URL=$LOGIN_URL"
+
+      - name: Setup Node.js (16.x)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16.x'
+
+      - name: Install Salesforce CLI (sfdx)
+        run: |
+          echo "Installing Salesforce CLI globally via npm..."
           npm install -g sfdx-cli
-      # Step 3: Set up the SFDX Auth URL
-      - name: Set up SFDX Authentication
-        run: |
-          echo "${{ secrets.SFDC_AUTH_URL }}" > sfdx-auth-url.txt
-          sfdx force:auth:sfdxurl:store -f sfdx-auth-url.txt -a MyNewOrg
-      # (Optional) Step 4: Display org info
-      - name: Display Org Info
-        run: sfdx force:org:display -u MyNewOrg --verbose
+          sfdx --version
 
-      # Step 5: Deploy without running tests
-      - name: Deploy Metadata (No Tests)
+      - name: Authenticate to Salesforce (device login)
+        env:
+          LOGIN_URL: ${{ env.LOGIN_URL }}
         run: |
-          sfdx force:source:deploy -u MyNewOrg -p force-app --wait 10 --testlevel NoTestRun
+          echo "Starting device login against $LOGIN_URL"
+          # device login prints a code and URL to the log — follow instructions to authenticate interactively
+          sfdx force:auth:device:login -r "$LOGIN_URL" --setdefaultusername
+
+      # Production deployment step: Run tests during deployment
+      - name: Deploy Source to Salesforce (RunLocalTests) - production
+        if: ${{ env.TARGET_ENV == 'production' }}
+        env:
+          LOGIN_URL: ${{ env.LOGIN_URL }}
+        run: |
+          echo "Starting production deployment with tests..."
+          # same testlevel as original file: RunLocalTests
+          sfdx force:source:deploy -p force-app --testlevel RunLocalTests
+
+      # Sandbox deployment step: (keeps same RunLocalTests behavior as in original)
+      - name: Deploy Source to Salesforce (RunLocalTests) - non-production
+        if: ${{ env.TARGET_ENV != 'production' }}
+        env:
+          LOGIN_URL: ${{ env.LOGIN_URL }}
+        run: |
+          echo "Starting sandbox deployment without running tests (replicating original file comments)..."
+          # note: original azure file used RunLocalTests for both branches; we replicate that exactly
+          sfdx force:source:deploy -p force-app --testlevel RunLocalTests
